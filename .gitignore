@@ -1,0 +1,6 @@
+commands/
+pdfs/
+.idea/
+
+config.py
+*.db
