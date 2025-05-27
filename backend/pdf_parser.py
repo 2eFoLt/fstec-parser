@@ -1,22 +1,25 @@
+"""
+This stuff is in dire need of refactoring ngnl
+"""
 from pypdf import PdfReader as pdfr
 from os import listdir
 import re
 from utils.reporting import make_report
 from db.database import DBInterface
 
-lookup_lang = {
+lookup_lang: dict[str, str] = {
     'а': 'a',
     'о': 'o',
     'е': 'e',
     'с': 'c'
 }
 
-stop_list = ['.exe', '.EXE', '.jar', '.JAR', '.js', '.JS', '.dll', '.DLL', '.jpg', '.JPG', '.png', '.PNG', '.pem',
+stop_list: list[str] = ['.exe', '.EXE', '.jar', '.JAR', '.js', '.JS', '.dll', '.DLL', '.jpg', '.JPG', '.png', '.PNG', '.pem',
              '.cpp']
 
-protection_list = ['https://socfmba.ru/', 'fmba@fmba.gov.ru', 'cspfmba.ru', 'cspmz.ru', 'Dr.Web', 'example.org']
+protection_list: list[str] = ['https://socfmba.ru/', 'fmba@fmba.gov.ru', 'cspfmba.ru', 'cspmz.ru', 'Dr.Web', 'example.org']
 
-regex_dict = {
+regex_dict: dict[str, str] = {
     'ip': r"^([\d]{1,3}\.){3}\d{1,3}$",
     'fqdn': r"^(?=.{4,127})(?![\d.-]+$)(?!.*?_.*?)(?!(?:[\w]+?\.)?\-[\w\.\-]*?)(?![\w]+?\-\.(?:[\w\.\-]+?))(?=[\w])(?=[\w\.\-]*?\.+[\w\.\-]*?)(?![\w\.\-]{254})(?!(?:\.?[\w\-\.]*?[\w\-]{64,}\.)+?)[\w\.\-]+?(?<![\w\-\.]\.[\d])(?<=[\w\-])(?<![\w\-]{25})$",
     'url': r"(h\w\wps?:\/\/)\S+$",
@@ -30,20 +33,20 @@ regex_dict = {
 # turn into server with API
 # after server make service and cron job for backup
 
-def clean_data(data: str):
+def clean_data(data: str) -> str:
     data = data.replace("[.]", ".").replace("[:]", ":")
-    data = re.sub(r"([;,.]|[;,].?)$", '', data)
+    data = re.sub(pattern=r"([;,.]|[;,].?)$", repl='', string=data)
     return data
 
 
-def check_for_filename(data: str):
+def check_for_filename(data: str) -> bool:
     for stop_sign in stop_list:
         if stop_sign in data:
             return True
     return False
 
 
-def encoding_fix(data: str):
+def encoding_fix(data: str) -> str:
     for char in lookup_lang:
         if char in data:
             print('Got russian letter, fixing\n')
@@ -52,15 +55,15 @@ def encoding_fix(data: str):
     return data
 
 
-def strip_order_date(data: str): return data[11:]
+def strip_order_date(data: str) -> str: return data[11:]
 
 
 database_object = DBInterface()
 database_object.connect()
 processed_orders = []
-for filename in listdir("pdfs"):
-    clear_name = filename.replace('.pdf', '')
-    order_number = strip_order_date(clear_name)
+for filename in listdir(path="pdfs"):
+    clear_name: str = filename.replace('.pdf', '')
+    order_number: str = strip_order_date(clear_name)
     processed_orders.append(order_number)
     ip_output = []
     fqdn_output = []
