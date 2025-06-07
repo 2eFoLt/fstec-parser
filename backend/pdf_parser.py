@@ -4,8 +4,9 @@ This stuff is in dire need of refactoring ngnl
 from pypdf import PdfReader as pdfr
 from os import listdir
 import re
-from utils.reporting import make_report
+from utils.reporting import make_report, dump_to_txt
 from db.database import DBInterface
+import pandas
 
 lookup_lang: dict[str, str] = {
     'а': 'a',
@@ -15,7 +16,7 @@ lookup_lang: dict[str, str] = {
 }
 
 stop_list: list[str] = ['.exe', '.EXE', '.jar', '.JAR', '.js', '.JS', '.dll', '.DLL', '.jpg', '.JPG', '.png', '.PNG', '.pem',
-             '.cpp']
+             '.cpp', '.txt']
 
 protection_list: list[str] = ['https://socfmba.ru/', 'fmba@fmba.gov.ru', 'cspfmba.ru', 'cspmz.ru', 'Dr.Web', 'example.org']
 
@@ -26,12 +27,6 @@ regex_dict: dict[str, str] = {
     'sha256': r"^[A-Fa-f0-9]{64}$",
     'sha1': r"^[A-Fa-f0-9]{40}$"
 }
-
-# make function selection between parsing pdf and database searching
-# unit test parser result to 2402_*
-# add legitimacy check with ipwhois + vt to exclude legit IPs and FQDNs from ban
-# turn into server with API
-# after server make service and cron job for backup
 
 def clean_data(data: str) -> str:
     data = data.replace("[.]", ".").replace("[:]", ":")
@@ -58,15 +53,17 @@ def encoding_fix(data: str) -> str:
 def strip_order_date(data: str) -> str: return data[11:]
 
 
-database_object = DBInterface()
-database_object.connect()
-processed_orders = []
+# database_object = DBInterface()
+# database_object.connect()
+# processed_orders = []
+failed_parsing: list[str] = []
 for filename in listdir(path="pdfs"):
     clear_name: str = filename.replace('.pdf', '')
     order_number: str = strip_order_date(clear_name)
-    processed_orders.append(order_number)
-    ip_output = []
-    fqdn_output = []
+    #processed_orders.append(order_number)
+    ip_output: list[str] = []
+    fqdn_output: list[str] = []
+    url_output: list[str] = []
     print(f"\nParsing {filename}: {order_number}")
     reader = pdfr(f"pdfs/{filename}")
     for page in reader.pages:
@@ -83,10 +80,10 @@ for filename in listdir(path="pdfs"):
             if reg_ips is not None:  # Works good
                 ip_output.append(reg_ips.string)
                 continue
-            # if reg_url is not None:  # Split troubles, above
-            #     if reg_url.string not in protection_list:
-            #         url_output.append(reg_url.string)
-            #         continue
+            if reg_url is not None:  # Split troubles, above
+                if reg_url.string not in protection_list:
+                    url_output.append(reg_url.string)
+                    continue
             if reg_fqdn is not None:
                 if check_for_filename(reg_fqdn.string): continue
                 if reg_fqdn.string not in protection_list:
@@ -99,21 +96,37 @@ for filename in listdir(path="pdfs"):
             # if reg_sha1 is not None:
             #     sha1_output.append(reg_sha1.string)
             #     continue
-            else:
-                # print(f":::WARNING! Failed to parse {item} :::")
-                continue
     print(f"IPs found: {len(ip_output)}")
     print(f"FQDNs found: {len(fqdn_output)}")
-    if len(ip_output) == 0 and len(fqdn_output) == 0:
-        print(f"No output found, skipping reporting stage")
+    print(f"URLs found: {len(url_output)}")
+    print(ip_output)
+    print(fqdn_output)
+    print(url_output)
+    if len(ip_output) == 0 and len(fqdn_output) == 0 and len(url_output) == 0:
+        failed_parsing.append(clear_name)
         continue
+    # fix_length: int = max(len(ip_output), len(fqdn_output), len(url_output))
+    # for output in [ip_output, fqdn_output, url_output]:
+    #     if len(output) < fix_length:
+    #         for i in range(fix_length - len(output)):
+    #             output.append('')
+    #populate_csv('full_dump.csv', zip(ip_output, fqdn_output, url_output))
     if len(ip_output) > 0:
-        make_report(clear_name, 'ip', ip_output)
-        database_object.add_data('ip_table', ip_output, 'ip_address', order_number)
+        dump_to_txt('ip', ip_output)
+        #make_report(clear_name, 'ip', ip_output)
+        #database_object.add_data('ip_table', ip_output, 'ip_address', order_number)
     if len(fqdn_output) > 0:
-        make_report(clear_name, 'fqdn',  fqdn_output)
+        dump_to_txt('fqdn', fqdn_output)
+        #make_report(clear_name, 'fqdn',  fqdn_output)
+    if len(url_output) > 0:
+        for i in range(len(url_output)):
+            url_output[i] = url_output[i].replace('hxxp', 'http')
+            url_output[i] = url_output[i].replace('hxxps', 'https')
+        dump_to_txt('url', url_output)
+        #make_report(clear_name, 'url', url_output)
 
-database_object.add_data('orders', processed_orders, 'order_date_number')
-print('ip_table contents:', database_object.select('ip_table', '*'))
-print('orders contents:', database_object.select('orders', 'order_date_number'))
-database_object.disconnect()
+# database_object.add_data('orders', processed_orders, 'order_date_number')
+# print('ip_table contents:', database_object.select('ip_table', '*'))
+# print('orders contents:', database_object.select('orders', 'order_date_number'))
+# database_object.disconnect()
+print(f"\n:::\nFAILED TO PARSE {failed_parsing}\n:::\n")
